@@ -1,8 +1,7 @@
 ### CYCLEGAN MODEL TRAINING WITH PYTORCH ###
 ### USING AFHQ DATASET BY DEFAULT ###
 ## TRAINING ON CPU BY DEFAULT ###
-## implement wandb
-## gpu available for macboook (M2)
+## TRAINING ON GPU IF AVAILABLE ###
 
 import torch
 import torch.nn as nn
@@ -75,6 +74,8 @@ class CGAN(nn.Module):
         return x23
 
 def main():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print('Model is running on {}'.format(device))
     # Load dataset
     transform = transforms.Compose([transforms.Resize(256), transforms.ToTensor()])
     dataset = datasets.ImageFolder(root='afhq/train', transform=transform)
@@ -104,7 +105,7 @@ def main():
             print('[%d/%d][%d/%d] Loss: %.4f' % (epoch, 200, i, len(dataloader), loss.item()))
             # Save model
             if i % 100 == 0:
-                torch.save(model.state_dict(), 'model.pth')
+                torch.save(model.state_dict(), 'model.onnx')
             
 
 if __name__ == '__main__':
