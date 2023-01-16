@@ -186,7 +186,11 @@ torch.save(netD.state_dict(), 'netD_final.pth')
 
 if __name__ == '__main__':
     # initialize wandb
-    wandb.init(project="CGAN_TRANSLATION", entity="gkecibas16")
+    wandb.init(project="CGAN_TRANSLATION", entity="comp511")
 
     # train the model
     train()
+
+    ## run the script in terminal
+    ## python cgan_translation.py
+    ## It is observable in wandb page
