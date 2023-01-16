@@ -1,220 +1,175 @@
-## STRUCTURE: DIFFUSION IMPLEMENTED CYCLEGAN##
-### TASK: IMAGE TO IMAGE TRANSLATION (BY DEFAULT AFHQ CAT to AFHQ DOG) ###
+### CYCLEGAN MODEL TRAINING WITH PYTORCH ###
 ### USING AFHQ DATASET BY DEFAULT ###
 ## TRAINING ON CPU BY DEFAULT ###
 ## TRAINING ON GPU IF AVAILABLE ###
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from torch.utils.data import DataLoader, Dataset
-from torchvision.utils import save_image
-from torchvision.utils import make_grid
-from torchvision.utils import save_image
-
-from tqdm import tqdm
+import guided_diffusion as diffusion
 import wandb
 
-wandb.init(project="DCGAN", entity="gkecibas16")
+wandb.init(project="DiffGAN", entity="gkecibas16")
 
-class DCGAN(nn.Module):
-    def __init__(self, img_channels, z_dim, feature_d, num_classes):
-        super(DCGAN, self).__init__()
-        self.gen = Generator(img_channels, z_dim, feature_d, num_classes)
-        self.disc = Discriminator(img_channels, feature_d, num_classes)
-        self.initialize_weights()
+class DiffGAN(nn.Module):
+    ## The class must be used diffusion/class GaussianDiffusion
+    def __init__(self, diffusion, model, device):
+        super().__init__()
+        self.diffusion = diffusion
+        self.model = model
+        self.device = device
 
-    def forward(self, x, y):
-        return self.gen(x, y)
-
-    def initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
-                nn.init.normal_(m.weight.data, 0.0, 0.02)
-            if isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight.data, 1.0)
-                nn.init.constant_(m.bias.data, 0.0)
-
-class Generator(nn.Module):
-    def __init__(self, img_channels, z_dim, feature_d, num_classes):
-        super(Generator, self).__init__()
-        self.gen = nn.Sequential(
-            self.block(z_dim + num_classes, feature_d * 16, 4, 1, 0), # (N, feature_d*16, 4, 4)
-            self.block(feature_d * 16, feature_d * 8, 4, 2, 1), # (N, feature_d*8, 8, 8)
-            self.block(feature_d * 8, feature_d * 4, 4, 2, 1), # (N, feature_d*4, 16, 16)
-            self.block(feature_d * 4, feature_d * 2, 4, 2, 1), # (N, feature_d*2, 32, 32)
-            nn.ConvTranspose2d(feature_d * 2, img_channels, 4, 2, 1), # (N, img_channels, 64, 64)
-            nn.Tanh(),
-        )
-
-    def forward(self, x, y):
-        x = torch.cat([x, y], dim=1)
-        return self.gen(x)
-
-    def block(self, in_channels, out_channels, kernel_size, stride, padding):
-        return nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-        )
+    def forward(self, x, t, num_samples=1):
+        # x: input image
+        # t: time step
+        # num_samples: number of samples to generate
+        # returns: a list of images
+        x = x.to(self.device)
+        images = []
+        for i in range(num_samples):
+            x = self.diffusion(x, t)
+            x = self.model(x)
+            images.append(x)
+        return images
 
 class Discriminator(nn.Module):
-    def __init__(self, img_channels, feature_d, num_classes):
-        super(Discriminator, self).__init__()
-        self.disc = nn.Sequential(
-            self.block(img_channels + num_classes, feature_d * 2, 4, 2, 1), # (N, feature_d*2, 32, 32)
-            self.block(feature_d * 2, feature_d * 4, 4, 2, 1), # (N, feature_d*4, 16, 16)
-            self.block(feature_d * 4, feature_d * 8, 4, 2, 1), # (N, feature_d*8, 8, 8)
-            self.block(feature_d * 8, feature_d * 16, 4, 2, 1), # (N, feature_d*16, 4, 4)
-            nn.Conv2d(feature_d * 16, 1, 4, 1, 0), # (N, 1, 1, 1)
-        )
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 64, 4, 2, 1, bias=False)
+        self.conv2 = nn.Conv2d(64, 128, 4, 2, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(128)
+        self.conv3 = nn.Conv2d(128, 256, 4, 2, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(256)
+        self.conv4 = nn.Conv2d(256, 512, 4, 2, 1, bias=False)
+        self.bn4 = nn.BatchNorm2d(512)
+        self.conv5 = nn.Conv2d(512, 512, 4, 2, 1, bias=False)
+        self.bn5 = nn.BatchNorm2d(512)
+        self.conv6 = nn.Conv2d(512, 512, 4, 2, 1, bias=False)
+        self.bn6 = nn.BatchNorm2d(512)
+        self.conv7 = nn.Conv2d(512, 512, 4, 2, 1, bias=False)
+        self.bn7 = nn.BatchNorm2d(512)
+        self.conv8 = nn.Conv2d(512, 1, 4, 1, 0, bias=False)
 
-    def forward(self, x, y):
-        x = torch.cat([x, y], dim=1)
-        return self.disc(x)
+    def forward(self, x):
+        x1 = F.leaky_relu(self.conv1(x), 0.2)
+        x2 = F.leaky_relu(self.bn2(self.conv2(x1)), 0.2)
+        x3 = F.leaky_relu(self.bn3(self.conv3(x2)), 0.2)
+        x4 = F.leaky_relu(self.bn4(self.conv4(x3)), 0.2)
+        x5 = F.leaky_relu(self.bn5(self.conv5(x4)), 0.2)
+        x6 = F.leaky_relu(self.bn6(self.conv6(x5)), 0.2)
+        x7 = F.leaky_relu(self.bn7(self.conv7(x6)), 0.2)
+        x8 = self.conv8(x7)
+        return x8
 
-    def block(self, in_channels, out_channels, kernel_size, stride, padding):
-        return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.LeakyReLU(0.2),
-        )
+class GaussianDiffusion(nn.Module):
+    def __init__(self, sigma, device):
+        super().__init__()
+        self.sigma = sigma
+        self.device = device
 
-def initialize_weights(model):
-    for m in model.modules():
-        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
-        if isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-            nn.init.constant_(m.weight.data, 1.0)
-            nn.init.constant_(m.bias.data, 0.0)
+    def forward(self, x, t):
+        # x: input image
+        # t: time step
+        # returns: a new image
+        x = x.to(self.device)
+        x = x + torch.randn(x.size()).to(self.device) * self.sigma * np.sqrt(t)
+        return x
 
-def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
-    print("=> Saving checkpoint")
-    torch.save(state, filename)
+class Generator(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.ConvTranspose2d(100, 512, 4, 1, 0, bias=False)
+        self.bn1 = nn.BatchNorm2d(512)
+        self.conv2 = nn.ConvTranspose2d(512, 512, 4, 2, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(512)
+        self.conv3 = nn.ConvTranspose2d(512, 512, 4, 2, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(512)
+        self.conv4 = nn.ConvTranspose2d(512, 512, 4, 2, 1, bias=False)
+        self.bn4 = nn.BatchNorm2d(512)
+        self.conv5 = nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False)
+        self.bn5 = nn.BatchNorm2d(256)
+        self.conv6 = nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False)
+        self.bn6 = nn.BatchNorm2d(128)
+        self.conv7 = nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False)
+        self.bn7 = nn.BatchNorm2d(64)
+        self.conv8 = nn.ConvTranspose2d(64, 3, 4, 2, 1, bias=False)
+        self.tanh = nn.Tanh()
 
-def load_checkpoint(checkpoint, model):
-    print("=> Loading checkpoint")
-    model.load_state_dict(checkpoint["state_dict"])
+    def forward(self, x):
+        x1 = F.relu(self.bn1(self.conv1(x)))
+        x2 = F.relu(self.bn2(self.conv2(x1)))
+        x3 = F.relu(self.bn3(self.conv3(x2)))
+        x4 = F.relu(self.bn4(self.conv4(x3)))
+        x5 = F.relu(self.bn5(self.conv5(x4)))
+        x6 = F.relu(self.bn6(self.conv6(x5)))
+        x7 = F.relu(self.bn7(self.conv7(x6)))
+        x8 = self.tanh(self.conv8(x7))
+        return x8
 
-### GRADIENT CALCULATIONS MAY BE UPDATED !!
-def gradient_penalty(critic, real, fake, device="cpu"):
-    BATCH_SIZE, C, H, W = real.shape
-    epsilon = torch.rand((BATCH_SIZE, 1, 1, 1)).repeat(1, C, H, W).to(device)
-    mixed_images = real * epsilon + fake * (1 - epsilon)
+class CGAN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.generator = Generator()
+        self.discriminator = Discriminator()
 
-    mixed_scores = critic(mixed_images)
+    def forward(self, x):
+        return self.generator(x)
 
-    gradient = torch.autograd.grad(
-        inputs=mixed_images,
-        outputs=mixed_scores,
-        grad_outputs=torch.ones_like(mixed_scores),
-        create_graph=True,
-        retain_graph=True,
-    )[0]
-    gradient = gradient.view(gradient.shape[0], -1)
-    gradient_norm = gradient.norm(2, dim=1)
-    gradient_penalty = torch.mean((gradient_norm - 1) ** 2)
-    return gradient_penalty
-
-def train_fn(loader, gen, disc, opt_gen, opt_disc, l1, mse, d_scaler, g_scaler, z_dim, device):
-    loop = tqdm(loader)
-
-    for batch_idx, (real, _) in enumerate(loop):
-        real = real.to(device)
-
-        cur_batch_size = real.shape[0]
-        ### TRAINING PART GRADIENT & LOSS CALCULATIONS MAY BE UPDATED !!
-        # Train Discriminator: max log(D(x)) + log(1 - D(G(z)))
-
-        ### NOISE ADDITION TECHNIQUE SHOULD BE IMPROVED
-        noise = torch.randn(cur_batch_size, z_dim, 1, 1).to(device)
-        fake = gen(noise, real)
-
-        disc_real = disc(real)
-        disc_fake = disc(fake.detach())
-
-        gp = gradient_penalty(disc, real, fake, device=device)
-        loss_disc = -(torch.mean(disc_real) - torch.mean(disc_fake)) + gp * 10
-        # loss_disc = -torch.mean(disc_real) + torch.mean(disc_fake)
-
-        opt_disc.zero_grad()
-        d_scaler.scale(loss_disc).backward()
-        d_scaler.step(opt_disc)
-        d_scaler.update()
-
-        # Train Generator: min log(1 - D(G(z))) <-> max log(D(G(z))
-        output = disc(fake)
-        loss_gen = -torch.mean(output)
-
-        opt_gen.zero_grad()
-        g_scaler.scale(loss_gen).backward()
-        g_scaler.step(opt_gen)
-        g_scaler.update()
-
-        if batch_idx % 100 == 0:
-            loop.set_postfix(
-                d_loss=loss_disc.item(), g_loss=loss_gen.item()
-            )
+def train(model, optimizer, dataloader, device, diffusion, t):
+    # Train model
+    for epoch in range(200):
+        for i, data in enumerate(dataloader, 0):
+            # Get data
+            real_image, _ = data
+            real_image = real_image.to(device)
+            # Generate noise
+            noise = torch.randn(real_image.size(0), 100, 1, 1).to(device)
+            # Generate fake image
+            fake_image = model.generator(noise)
+            # Diffuse fake image
+            fake_image = diffusion(fake_image, t)
+            # Train discriminator
+            optimizer.zero_grad()
+            d_real = model.discriminator(real_image)
+            d_fake = model.discriminator(fake_image)
+            d_loss = torch.mean(d_fake) - torch.mean(d_real)
+            d_loss.backward(retain_graph=True)
+            optimizer.step()
+            # Train generator
+            optimizer.zero_grad()
+            g_loss = -torch.mean(d_fake)
+            g_loss.backward(retain_graph=True)
+            optimizer.step()
+            # Log losses
+            wandb.log({"d_loss": d_loss, "g_loss": g_loss})
+            # Print losses
+            print('Epoch: {}, Batch: {}, d_loss: {}, g_loss: {}'.format(epoch, i, d_loss.item(), g_loss.item()))
 
 def main():
-    # Hyperparameters etc.
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    lr = 3e-4
-    z_dim = 64
-    image_channels = 3
-    feature_d = 16
-    num_classes = 10
-    batch_size = 128
-    num_epochs = 100
-    cur_step = 0
-    mean_generator_loss = 0
-    mean_discriminator_loss = 0
-    cur_step = 0
-    display_step = 500
-    criterion = nn.BCEWithLogitsLoss()
-    l1 = nn.L1Loss()
-    mse = nn.MSELoss()
-    image_size = 64
-    dataset = datasets.ImageFolder(
-        root="afhq/train",
-        transform=transforms.Compose(
-            [
-                transforms.Resize(image_size),
-                transforms.CenterCrop(image_size),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    [0.5 for _ in range(image_channels)], [0.5 for _ in range(image_channels)]
-                ),
-            ]
-        ),
-    )
-    loader = DataLoader(dataset, batch_size, shuffle=True, num_workers=4, pin_memory=True)
-    gen = Generator(z_dim, image_channels, feature_d, num_classes).to(device)
-    initialize_weights(gen)
-    disc = Discriminator(image_channels, feature_d, num_classes).to(device)
-    initialize_weights(disc)
-    opt_gen = torch.optim.Adam(gen.parameters(), lr=lr, betas=(0.5, 0.999))
-    opt_disc = torch.optim.Adam(disc.parameters(), lr=lr, betas=(0.5, 0.999))
-    g_scaler = torch.cuda.amp.GradScaler()
-    d_scaler = torch.cuda.amp.GradScaler()
+    # Set up wandb
+    wandb.init(project="cgan")
+    # Set up device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Set up model
+    model = CGAN()
+    model.to(device)
+    # Set up optimizer
+    optimizer = optim.Adam(model.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    # Set up diffusion
+    diffusion = GaussianDiffusion(0.1, device)
+    # Set up data
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    dataset = datasets.ImageFolder(root='afhq/train', transform=transform)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=True, num_workers=2)
+    # Train model
+    train(model, optimizer, dataloader, device, diffusion, 0.1)
 
-    for epoch in range(num_epochs):
-        train_fn(loader, gen, disc, opt_gen, opt_disc, l1, mse, d_scaler, g_scaler, z_dim, device)
-
-    save_checkpoint(
-        {
-            "gen_state_dict": gen.state_dict(),
-            "disc_state_dict": disc.state_dict(),
-            "opt_gen_state_dict": opt_gen.state_dict(),
-            "opt_disc_state_dict": opt_disc.state_dict(),
-        },
-        filename="my_checkpoint.pth.tar",
-    )
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
 
+## run the script in terminal
 ## python DCGAN.py
