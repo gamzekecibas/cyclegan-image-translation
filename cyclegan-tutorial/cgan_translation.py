@@ -127,8 +127,9 @@ def train():
             # train the discriminator
             netD.zero_grad()
             real_A = data_A.to(device)
-            label = torch.full((batch_size,1, 13, 13), 1, device=device)
+            label = torch.full((batch_size, 1, 13, 13), 1, device=device)
             output = netD(real_A)
+            ## reshape label to have same shape with output
             #print('shape of output: ', output.shape)
             #print('shape of label: ', label.shape)
             ## return Long to float
@@ -137,11 +138,14 @@ def train():
             errD_real.backward()
             D_x = output.mean().item()
 
-            noise = torch.randn(batch_size, 100, 1, 1, device=device)
+            noise = torch.randn(batch_size, 100, 13, 13, device=device)
             fake_A = netG(noise)
             label.fill_(0)
             output = netD(fake_A.detach())
             label = label.float()
+            ### reshape label to have same shape with output
+            #print('shape of output: ', output.shape)
+            #print('shape of label: ', label.shape)
             errD_fake = criterion(output, label)
             errD_fake.backward()
             D_G_z1 = output.mean().item()
@@ -158,7 +162,7 @@ def train():
             D_G_z2 = output.mean().item()
             optimizerG.step()
 
-            if i % 1 == 0:
+            if i % 50 == 0:
                 print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                     % (epoch, num_epochs, i, len(load_Train_A),
                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
