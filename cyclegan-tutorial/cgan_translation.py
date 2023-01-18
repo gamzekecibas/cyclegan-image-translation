@@ -23,8 +23,8 @@ data_path_Train_B = os.path.dirname('afhq/train/dog')
 data_path_Test_A = os.path.dirname('afhq/val/cat')
 data_path_Test_B = os.path.dirname('afhq/val/dog')
 
-batch_size = 128
-num_workers = 2
+batch_size = 64  ## 128
+#num_workers = 0 ## 2
 
 transform = transforms.Compose([transforms.Resize((256,256)),
                                 transforms.ToTensor(),
@@ -32,20 +32,19 @@ transform = transforms.Compose([transforms.Resize((256,256)),
 # cat train
 load_Train_A = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(root=
                data_path_Train_A, transform=transform), batch_size=batch_size, 
-               shuffle =True, num_workers=num_workers)
+               shuffle =True)
 # dog train
 load_Train_B = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(root=
                data_path_Train_B, transform=transform), batch_size=batch_size, 
-               shuffle =True, num_workers=num_workers)
+               shuffle =True)
 # cat test
 load_Test_A = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(root=
               data_path_Test_A, transform=transform), batch_size=batch_size,
-              shuffle = False, num_workers=num_workers)
+              shuffle = False)
 # dog test
 load_Test_B = torch.utils.data.DataLoader(torchvision.datasets.ImageFolder(root=
               data_path_Test_B, transform=transform), batch_size=batch_size,
-              shuffle = False, num_workers=num_workers)
-
+              shuffle = False)
 cat_train, _ = next(iter(load_Train_A))
 dog_train, _ = next(iter(load_Train_B))
 cat_test, _ = next(iter(load_Test_A))
@@ -127,12 +126,13 @@ def train():
             # train the discriminator
             netD.zero_grad()
             real_A = data_A.to(device)
+            # batch_size = real_A.size(0)
             label = torch.full((batch_size, 1, 13, 13), 1, device=device)
             output = netD(real_A)
-            ## reshape label to have same shape with output
+            ## reshape label to have same shape with output
             #print('shape of output: ', output.shape)
             #print('shape of label: ', label.shape)
-            ## return Long to float
+            ## return Long to float
             label = label.float()
             errD_real = criterion(output, label)
             errD_real.backward()
@@ -162,7 +162,7 @@ def train():
             D_G_z2 = output.mean().item()
             optimizerG.step()
 
-            if i % 50 == 0:
+            if i % 10 == 0:
                 print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                     % (epoch, num_epochs, i, len(load_Train_A),
                         errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
@@ -190,11 +190,11 @@ torch.save(netD.state_dict(), 'netD_final.pth')
 
 if __name__ == '__main__':
     # initialize wandb
-    wandb.init(project="CGAN_TRANSLATION", entity="comp511")
+    wandb.init(project="CGAN_TRANSLATION", entity="gkecibas16")
 
     # train the model
     train()
 
     ## run the script in terminal
     ## python cgan_translation.py
-    ## It is observable in wandb page
+    ## It is observable in wandb page
