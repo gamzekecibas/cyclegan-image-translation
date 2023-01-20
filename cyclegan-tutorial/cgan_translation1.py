@@ -23,7 +23,7 @@ channels = 3
 
 # training
 epoch = 0 # epoch to start training from
-n_epochs = 5 # number of epochs of training
+n_epochs = 200 # number of epochs of training
 batch_size = 1 # size of the batches
 lr = 0.0002 # adam : learning rate
 b1 = 0.5 # adam : decay of first order momentum of gradient
@@ -264,13 +264,13 @@ class ImageDataset(Dataset):
 
 dataloader = DataLoader(
     ImageDataset(root, transforms_=transforms_, unaligned=True),
-    batch_size=1, # 1
+    batch_size=16, # 1
     shuffle=True
 )
 
 val_dataloader = DataLoader(
     ImageDataset(root, transforms_=transforms_, unaligned=True, mode='test'),
-    batch_size=5,
+    batch_size=16,
     shuffle=True
 )
 def main():
@@ -278,7 +278,7 @@ def main():
 
     # training
     epoch = 0 # epoch to start training from
-    n_epochs = 5 # number of epochs of training
+    n_epochs = 200 # number of epochs of training
 
     for epoch in range(epoch, n_epochs):
         for i, batch in enumerate(tqdm(dataloader)):
