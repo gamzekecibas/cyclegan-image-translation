@@ -1,3 +1,4 @@
+## referance links
 import os
 import numpy as np
 import random
@@ -74,7 +75,27 @@ class Generator(nn.Module):
     def forward(self, input):
         return self.main(input)
 
-# define the discriminator
+
+# gradient penalty to stabilize the training considering dimension of the image
+
+def gradient_penalty(critic, real, fake, device="cpu"):
+    BATCH_SIZE, C, H, W = real.shape
+    epsilon = torch.rand((BATCH_SIZE, 1, 1, 1)).repeat(1, C, H, W).to(device)
+    interpolated_images = real * epsilon + fake * (1 - epsilon)
+    mixed_scores = critic(interpolated_images)
+    gradient = torch.autograd.grad(
+        inputs=interpolated_images,
+        outputs=mixed_scores,
+        grad_outputs=torch.ones_like(mixed_scores),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    gradient = gradient.view(gradient.shape[0], -1)
+    gradient_norm = gradient.norm(2, dim=1)
+    gradient_penalty = torch.mean((gradient_norm - 1) ** 2)
+    return gradient_penalty
+
+# # define the discriminator
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -112,7 +133,7 @@ def weights_init(m):
 netG.apply(weights_init)
 netD.apply(weights_init)
 
-# initialize the loss function
+# initialize the loss function for discriminator and generator
 criterion = nn.MSELoss()
 
 # initialize the optimizers
@@ -134,7 +155,7 @@ def train():
             #print('shape of label: ', label.shape)
             ## return Long to float
             label = label.float()
-            errD_real = criterion(output, label)
+            errD_real = criterion(output, label) 
             errD_real.backward()
             D_x = output.mean().item()
 
@@ -146,10 +167,10 @@ def train():
             ### reshape label to have same shape with output
             #print('shape of output: ', output.shape)
             #print('shape of label: ', label.shape)
-            errD_fake = criterion(output, label)
+            errD_fake = criterion(output, label) 
             errD_fake.backward()
-            D_G_z1 = output.mean().item()
-            errD = errD_real + errD_fake
+            D_G_z1 = output.mean().item() 
+            errD = errD_real + errD_fake + gradient_penalty(netD, real_A, fake_A, device)
             optimizerD.step()
 
             # train the generator
@@ -182,6 +203,8 @@ def train():
 
                 # log the losses
                 wandb.log({"errD": errD.item(), "errG": errG.item()})
+                wandb.log({"epoch", epoch})
+                wandb.log({"grad_penalty", gradient_penalty(netD, real_A, fake_A, device)})
                 wandb.log({"D(x)": D_x, "D(G(z))": D_G_z1, "D(G(z))": D_G_z2})
 
 # save the final model
@@ -190,7 +213,7 @@ torch.save(netD.state_dict(), 'netD_final.pth')
 
 if __name__ == '__main__':
     # initialize wandb
-    wandb.init(project="CGAN_TRANSLATION", entity="gkecibas16")
+    wandb.init(project="CGAN_TRANSLATION", entity="comp511")
 
     # train the model
     train()
